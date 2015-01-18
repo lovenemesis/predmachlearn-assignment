@@ -5,18 +5,37 @@ date: "18 Jan 2015"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+##Summary##
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r}
-summary(cars)
+
+##Exploratory Analysis##
+
+In this analyss we will use WLE[1] dataset to perform the model fitting.
+
+First, we load the training data which was devided before and perform some exploratory analysis.
+
+```{r prepare_training, echo=TRUE}
+if(file.access("pml-training.csv", mode = 4) == -1){
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", method="curl")
+    }
+pml_training <- read.csv("pml-training.csv")
 ```
 
-You can also embed plots, for example:
+```{r explore_training, echo=TRUE}
+library(caret, quietly = TRUE)
+predictors <- names(pml_training)[c(-1,-2,-160)]
 
-```{r, echo=FALSE}
-plot(cars)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+##Model Building##
+
+##Cross Validation##
+
+##Expected Out of Sample Error Rate##
+
+##Reference##
+
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3PA56n1ax
