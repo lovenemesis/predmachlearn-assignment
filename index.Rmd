@@ -7,13 +7,13 @@ output: html_document
 
 ##Summary##
 
+Smart wearable devices like Jawbone Up, Nike FuelBand, and Fitbit allows people to record their physical activity easily. However, few research was conducted on the quality of recorded physical activity. This analysis involved 6 participants, who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The machine learning algorithm developed based on the recorded data could distinguish the types of barbell lifts very well.
 
+##Co-variate Creation##
 
-##Exploratory Analysis##
+In this analysis we will use WLE[1] data set to perform the model fitting.
 
-In this analyss we will use WLE[1] dataset to perform the model fitting.
-
-First, we load the training data which was devided before and perform some exploratory analysis.
+First, we load the pre-processed data and perform some exploratory analysis.
 
 ```{r prepare_training, echo=TRUE}
 if(file.access("pml-training.csv", mode = 4) == -1){
@@ -22,20 +22,122 @@ if(file.access("pml-training.csv", mode = 4) == -1){
 pml_training <- read.csv("pml-training.csv")
 ```
 
+Training data set contains `r dim(pml_training)[1]` observations and `r dim(pml_training)[2]` variables.
+As we were going to construct a machine learning algorithm, the data set were cleaned by following steps:
+
+1. Removed covariate that has over 95% missing values. With so much high missing value rate, imputing missing values may do nothing good but introducing higher bias.
+2. Removed covariate that is near zero varience.
+
 ```{r explore_training, echo=TRUE}
 library(caret, quietly = TRUE)
-predictors <- names(pml_training)[c(-1,-2,-160)]
 
+#Remove covariates that have over 95% of missing values.
+nearNaVar <- function (data, NaRatio = 0.95){
+    Nas <- c()
+    for (i in seq_along(data)) {
+        if ( sum(is.na(data[i]))/nrow(data[i]) >= NaRatio) {
+            Nas <- c(Nas, i)
+        }
+    }
+    return(Nas)
+}
+nnv <- nearNaVar(pml_training)
+pml_training <- pml_training[,-nnv]
+
+#Remove covariates that have near zero variance.
+nsv <- nearZeroVar(pml_training)
+pml_training <- pml_training[,-nsv]
+
+#Remove index and time sequence variables that are not helpful for predicting.
+pml_training <- pml_training[,-(1:6)]
+
+##Draw plot for exploration
+featurePlot(pml_training[,1:4], pml_training$classe, plot="density", scales = list(x=list(relation="free"), y=list(relation="free")), adjust =1.5, auto.key=list(columns=3))
 ```
+
+Additionally, time sequence marks were considered as irrelevant in above steps after considering the experiment precedures.
 
 ##Model Building##
 
-##Cross Validation##
+The cleaned data was separated into two sub-groups for method training and testing.
 
-##Expected Out of Sample Error Rate##
+```{r spliting, echo=TRUE}
+#Set random seed for reproducibility
+set.seed(38423)
+
+#Divide original data into training 
+inTrain <- createDataPartition(pml_training$classe, p = 0.7, list = FALSE)
+training <- pml_training[inTrain,]
+testing <- pml_training[-inTrain,]
+```
+
+The resulted training sub-group contains `r nrow(training)` observations while the testing contains `r nrow(testing)`. Because the explorationn analysis suggests a non-liner patten of the covariates, tree method was deployed firstly.
+
+```{r tree_model, echo=TRUE}
+modelTree <- train(training$classe ~., data = training, method = "rpart")
+modelTree
+library(rattle)
+fancyRpartPlot(modelTree$finalModel, sub = "Final Model with predicting tree")
+```
+
+Reported accuracy of tree model is rather low(Acc = 0.51) with 25 bootstrapped resampling. Furthermore, the final tree falied to classify the "D" class. 
+With this in mind, we continued to apply more robust random forest method. "doMC" packages was used to take advantage of the parallel processing. 
+
+```{r forest_model,echo=TRUE}
+library(doMC, quietly = TRUE)
+registerDoMC() #Utilize half of available cores for parallel processing.
+fitControl <- trainControl(method = "oob", allowParallel = TRUE)
+modelForest <- train(training$classe ~., data = training, method = "rf", trControl = fitControl, allowParallel = TRUE)
+modelForest
+```
+
+Reported accuracy is quite high(Acc = 0.99) thus a low out of bag error rate is expected. Cross-validation isn't necessary for random forest to get a unbiasd estimate as suggested by package maintainer[2].
+
+##Model Testing and Selection##
+
+```{r model_testing, echo=TRUE}
+modelForest$finalModel
+confusionMatrix(predict(modelForest$finalModel, newdata = testing), testing$classe)
+```
+
+The final model selcted by random forest contains 500 trees with OOB estimate of error rate at 0.64%. 
+Then it was tested on testing sub-group which resulted 99% accuracy. Comparing to tree model, random forest model was a superior choice to validate.
+
+##Model Validation##
+
+Similarly, we loaded the pre-processed testing data to validate the chosen prediction model.
+The exact data cleaning precedures were applied.
+
+```{r model_validation, echo=TRUE}
+if(file.access("pml-testing.csv", mode = 4) == -1){
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", method="curl")
+    }
+pml_testing <- read.csv("pml-testing.csv")
+pml_testing <- pml_testing[,-nnv]
+pml_testing <- pml_testing[,-nsv]
+pml_testing <- pml_testing[,-(1:6)]
+answers <- predict(modelFit$finalModel, newdata = pml_testing)
+answers
+```
+
+As expected, the predicted classe for `r nrow(pml_testing)` subjects 
+
+##Result Submission##
+```{r result_submission, echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
 
 ##Reference##
 
 [1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
 
 Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3PA56n1ax
+
+[2] http://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr
